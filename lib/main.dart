@@ -40,6 +40,8 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _currentOrigin; // لتخزين أصل (Origin) الموقع المستهدف
   final Set<String> _visitedUrls = {}; // مجموعة لتخزين عناوين URL التي تم زيارتها
   final List<String> _urlsToVisit = []; // قائمة لعناوين URL التي يجب زيارتها
+  int _pagesVisitedCount = 0;
+  int _urlsToVisitCount = 0;
   late final WebViewController _controller; // Declare _controller as late final
   String? _screenshotsDirectory;
   late final TextEditingController _urlController; // Corrected TextEditingController usage
@@ -136,6 +138,14 @@ class _MyHomePageState extends State<MyHomePage> {
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              children: [
+                Text('Pages Visited: $_pagesVisitedCount'),
+                Text('URLs to Visit: $_urlsToVisitCount'),
+              ],
+            )),
           Expanded(
             child: WebViewWidget(controller: _controller),
           ),
@@ -148,8 +158,12 @@ class _MyHomePageState extends State<MyHomePage> {
     if (_urlsToVisit.isNotEmpty) {
       final nextUrl = _urlsToVisit.removeAt(0); // جلب أول URL من القائمة
       if (!_visitedUrls.contains(nextUrl)) { // التحقق مما إذا كان قد تم زيارته بالفعل
-        _visitedUrls.add(nextUrl); // إضافته إلى قائمة التي تم زيارتها
-        developer.log('Visiting: $nextUrl');
+        setState(() {
+          _visitedUrls.add(nextUrl); // إضافته إلى قائمة التي تم زيارتها
+          _pagesVisitedCount++;
+ _urlsToVisitCount = _urlsToVisit.length;
+        });
+        developer.log('Visiting: $nextUrl'); // تسجيل عنوان الـ URL الذي يتم زيارته
         // ignore: unused_local_variable
         // تحميل الـ URL في WebView
         _controller.loadRequest(Uri.parse(nextUrl)); // Ensure this is the correct method call 
@@ -160,7 +174,10 @@ class _MyHomePageState extends State<MyHomePage> {
       } else {
         // إذا كان الـ URL قد تم زيارته، ننتقل إلى معالجة التالي
         _processNextUrl(); // Corrected method call
-      }
+      }      
+      setState(() {
+ _urlsToVisitCount = _urlsToVisit.length;
+      });
     } else {
       developer.log('Finished crawling.'); // تم الانتهاء من الزحف
     }
@@ -179,6 +196,29 @@ class _MyHomePageState extends State<MyHomePage> {
 
     developer.log('Found ${anchorElements.length} anchor elements.');
 
+    try {
+ final numberOfButtons = await _controller.runJavaScriptReturningResult('document.querySelectorAll("button").length');
+      developer.log('Number of buttons on the page: $numberOfButtons');
+    } catch (e) {
+      developer.log('Error executing JavaScript: $e');
+    }
+
+    // **هنا نضيف منطق محاكاة النقر باستخدام JavaScript**
+    try {
+      // مثال: محاولة النقر على أول رابط في الصفحة
+      await _controller.runJavaScript('document.querySelector("a")?.click();');
+      developer.log('Attempted to click on the first link.');
+    } catch (e) {
+      developer.log('Error executing JavaScript click: $e');
+    }
+
+    // **هنا نضيف منطق محاكاة التمرير باستخدام JavaScript**
+    try {
+        await _controller.runJavaScript('window.scrollTo(0, document.body.scrollHeight);');
+        developer.log('Scrolled to the bottom of the page.');
+      } catch (e) {
+        developer.log('Error executing JavaScript scroll: $e');
+      }
     for (final anchor in anchorElements) {
       final href = anchor.attributes['href']; // Extract href attribute
 
@@ -188,7 +228,9 @@ class _MyHomePageState extends State<MyHomePage> {
             final resolvedUrl = Uri.parse(_visitedUrls.last).resolveUri(Uri.parse(href)).toString(); 
 
             if (_currentOrigin != null && resolvedUrl.startsWith(_currentOrigin!) && !_visitedUrls.contains(resolvedUrl) && !_urlsToVisit.contains(resolvedUrl)) {
-              _urlsToVisit.add(resolvedUrl); // Add to queue
+              setState(() {
+                _urlsToVisit.add(resolvedUrl); // Add to queue
+              });
               developer.log('Added to queue: $resolvedUrl');
             } else {
                  // developer.log('Ignoring URL: $resolvedUrl');
@@ -197,13 +239,36 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
+    setState(() {
+      _urlsToVisitCount = _urlsToVisit.length;
+    });
+
     if (_screenshotsDirectory != null) {
         try {
- final Uint8List? bytes = await _controller.captureScreenshot();
+ final Uint8List? bytes = await _controller.captureScreenshot(); // Commented out as per instruction
             if (bytes != null) {
-                final urlHash = Uri.parse(_visitedUrls.last).hashCode;
-                final fileName = 'screenshot_$urlHash.png';
-                final filePath = '$_screenshotsDirectory/$fileName';
+                String fileName;
+                final pageTitle = await _controller.runJavaScriptReturningResult('document.title') as String?;
+
+                if (pageTitle != null && pageTitle.isNotEmpty) {
+                    final cleanedTitle = pageTitle.replaceAll(RegExp(r'[^ws.-]'), '').trim();
+                    fileName = '${cleanedTitle.isEmpty ? "untitled" : cleanedTitle}.png';
+                } else {
+                    final currentUrl = _visitedUrls.last;
+                    final urlPath = Uri.parse(currentUrl).path;
+                    final cleanedPath = urlPath.replaceAll(RegExp(r'[\/]'), '_').trim();
+                    fileName = '${cleanedPath.isEmpty || cleanedPath == "_" ? "homepage" : cleanedPath}.png';
+                }
+
+                int counter = 1;
+                String finalFileName = fileName;
+                while (await File('${_screenshotsDirectory}/${finalFileName}').exists()) {
+                    final baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                    final extension = fileName.substring(fileName.lastIndexOf('.'));
+                    finalFileName = '${baseName}_${counter}${extension}';
+                    counter++;
+                }
+                final filePath = '${_screenshotsDirectory}/${finalFileName}';
 
                 final file = File(filePath);
                 await file.writeAsBytes(bytes);
