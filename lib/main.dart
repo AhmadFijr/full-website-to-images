@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:html/parser.dart' show parse;
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:html/dom.dart' as dom;
+import 'package:path_provider/path_provider.dart' as path_provider;
 import 'dart:developer' as developer;
 
 void main() {
@@ -10,7 +13,7 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
   
   @override
   Widget build(BuildContext context) { // Overrides build method
@@ -25,7 +28,7 @@ class MyApp extends StatelessWidget {
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
+  const MyHomePage({super.key, required this.title});
   
   final String title;
   
@@ -37,7 +40,8 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _currentOrigin; // لتخزين أصل (Origin) الموقع المستهدف
   final Set<String> _visitedUrls = {}; // مجموعة لتخزين عناوين URL التي تم زيارتها
   final List<String> _urlsToVisit = []; // قائمة لعناوين URL التي يجب زيارتها
-  late final WebViewController _controller;
+  late final WebViewController _controller; // Declare _controller as late final
+  String? _screenshotsDirectory;
   late final TextEditingController _urlController; // Corrected TextEditingController usage
 
   @override
@@ -71,6 +75,19 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       );
     _urlController = TextEditingController(); // Initialize _urlController here
+    _initScreenshotsDirectory();
+
+  }
+
+  void _initScreenshotsDirectory() async {
+ final directory = await path_provider.getApplicationDocumentsDirectory();
+    _screenshotsDirectory = '${directory.path}/screenshots';
+
+    final screenshotsDir = Directory(_screenshotsDirectory!);
+    if (!await screenshotsDir.exists()) {
+      await screenshotsDir.create(recursive: true);
+    }
+    developer.log('Screenshots will be saved in: $_screenshotsDirectory');
   }
 
   void _loadUrl() {
@@ -80,7 +97,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
         _currentOrigin = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}'; // استخلاص الأصل
         _urlsToVisit.clear();
-        _visitedUrls.clear();
+        _visitedUrls.clear(); 
         _urlsToVisit.add(url); // إضافة الـ URL الأولي إلى قائمة الزيارة
         _processNextUrl(); // بدء معالجة عناوين URL
       } else {
@@ -104,7 +121,7 @@ class _MyHomePageState extends State<MyHomePage> {
               children: <Widget>[
                 Expanded(
                   child: TextField(// Corrected class name and Expanded usage
-                    controller: _urlController,
+                    controller: _urlController, 
                     decoration: const InputDecoration(
                       hintText: 'أدخل عنوان URL للموقع',
                       border: OutlineInputBorder(),
@@ -113,7 +130,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
                 const SizedBox(width: 8), // Corrected SizedBox usage
                 ElevatedButton( // Corrected ElevatedButton usage
-                  onPressed: _loadUrl,
+                  onPressed: _loadUrl, 
                   child: const Text('ابدأ'), // Corrected Text usage
                 ),
               ],
@@ -135,7 +152,7 @@ class _MyHomePageState extends State<MyHomePage> {
         developer.log('Visiting: $nextUrl');
         // ignore: unused_local_variable
         // تحميل الـ URL في WebView
-        _controller.loadRequest(Uri.parse(nextUrl)); // Ensure this is the correct method call
+        _controller.loadRequest(Uri.parse(nextUrl)); // Ensure this is the correct method call 
 
         // **هنا سيتم إضافة منطق انتظار تحميل الصفحة واستخلاص الروابط والتقاط لقطة الشاشة لاحقًا**
         // حاليًا، نحن فقط نقوم بتحميل الصفحة
@@ -153,7 +170,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // Extract HTML content
     final htmlString = await _controller.runJavaScriptReturningResult(
-      'document.documentElement.outerHTML') as String; // Ensure this is the correct method call
+      'document.documentElement.outerHTML') as String; // Ensure this is the correct method call 
     developer.log('HTML fetched. Length: ${htmlString.length}');
 
     // Parse HTML and extract links
@@ -168,7 +185,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (href != null && href.isNotEmpty && !href.startsWith('#')) {
         // Resolve relative URLs and filter
         if (_visitedUrls.isNotEmpty) {
-            final resolvedUrl = Uri.parse(_visitedUrls.last).resolveUri(Uri.parse(href)).toString();
+            final resolvedUrl = Uri.parse(_visitedUrls.last).resolveUri(Uri.parse(href)).toString(); 
 
             if (_currentOrigin != null && resolvedUrl.startsWith(_currentOrigin!) && !_visitedUrls.contains(resolvedUrl) && !_urlsToVisit.contains(resolvedUrl)) {
               _urlsToVisit.add(resolvedUrl); // Add to queue
@@ -180,6 +197,28 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
+    if (_screenshotsDirectory != null) {
+        try {
+ final Uint8List? bytes = await _controller.captureScreenshot();
+            if (bytes != null) {
+                final urlHash = Uri.parse(_visitedUrls.last).hashCode;
+                final fileName = 'screenshot_$urlHash.png';
+                final filePath = '$_screenshotsDirectory/$fileName';
+
+                final file = File(filePath);
+                await file.writeAsBytes(bytes);
+
+                developer.log('Screenshot saved to: $filePath');
+            } else {
+                developer.log('Failed to capture screenshot: bytes are null');
+            }
+        } catch (e) {
+            developer.log('Error capturing or saving screenshot: $e');
+        }
+    } else {
+        developer.log('Screenshots directory not initialized.');
+    }
+    
     // Continue to the next URL in the queue
     _processNextUrl();
   }
