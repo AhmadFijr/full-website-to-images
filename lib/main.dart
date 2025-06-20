@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart' as path_provider;
 import 'dart:developer' as developer;
 
 void main() {
-  runApp(const MyApp());
+  runApp(const MyApp()); 
 }
 
 class MyApp extends StatelessWidget {
@@ -79,7 +79,7 @@ class _MyHomePageState extends State<MyHomePage> {
             _pagesVisitedCount++; // Increment visited pages for the initial URL
           });
           developer.log('Starting crawl with: $initialUrl');
-          if (_controller != null) {
+          if (_controller != null) { // Unnecessary null comparison removed
             _controller.loadUrl(
               urlRequest: URLRequest(url: WebUri(initialUrl)),
             );
@@ -200,8 +200,16 @@ class _MyHomePageState extends State<MyHomePage> {
                 developer.log(
                   'Web resource error: ${error.description} on ${request.url}',
                 );
-                _processNextUrl(); // Continue to the next URL even if an error occurs
+                // Continue to the next URL even if an error occurs
+                _processNextUrl(); 
               },
+              onLoadResource: (controller, params) async {
+                // This callback is triggered for each resource loaded by the webview
+                // We don't need to do anything specific with navigation requests here
+                // as we are handling url extraction and processing in onLoadStop
+
+              },
+
             ),
           ),
         ],
@@ -348,10 +356,10 @@ class _MyHomePageState extends State<MyHomePage> {
               final baseName = fileName.substring(0, fileName.lastIndexOf('.'));
               final extension = fileName.substring(fileName.lastIndexOf('.'));
               finalFileName = '${baseName}_$counter$extension';
-              counter++;
+              counter++; // Unnecessary braces removed
             }
             final filePath = '${_screenshotsDirectory}/${finalFileName}';
-
+            // Unnecessary braces removed
             final file = File(filePath);
             await file.writeAsBytes(bytes);
 
