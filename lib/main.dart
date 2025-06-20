@@ -8,8 +8,10 @@ import 'package:path_provider/path_provider.dart' as path_provider;
 import 'dart:developer' as developer;
 
 void main() {
-  runApp(const MyApp()); 
+  runApp(const MyApp());
 }
+
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -79,7 +81,8 @@ class _MyHomePageState extends State<MyHomePage> {
             _pagesVisitedCount++; // Increment visited pages for the initial URL
           });
           developer.log('Starting crawl with: $initialUrl');
-          if (_controller != null) { // Unnecessary null comparison removed
+          if (_controller != null) {
+            // Unnecessary null comparison removed
             _controller.loadUrl(
               urlRequest: URLRequest(url: WebUri(initialUrl)),
             );
@@ -201,15 +204,13 @@ class _MyHomePageState extends State<MyHomePage> {
                   'Web resource error: ${error.description} on ${request.url}',
                 );
                 // Continue to the next URL even if an error occurs
-                _processNextUrl(); 
+                _processNextUrl();
               },
               onLoadResource: (controller, params) async {
                 // This callback is triggered for each resource loaded by the webview
                 // We don't need to do anything specific with navigation requests here
                 // as we are handling url extraction and processing in onLoadStop
-
               },
-
             ),
           ),
         ],
@@ -238,6 +239,27 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     } else {
       developer.log('Finished crawling.');
+
+      // **أظهر رسالة Dialog هنا**
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Crawl Complete'), // Changed title to English
+            content: Text(
+              'Finished crawling the website.',
+            ), // Changed content to English
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close the dialog
+                },
+                child: const Text('OK'), // Changed button text to English
+              ),
+            ],
+          );
+        },
+      );
     }
   }
 
