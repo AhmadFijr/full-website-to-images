@@ -94,6 +94,24 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  // Function to open the screenshots directory
+  void _openScreenshotsFolder() async {
+    if (_screenshotsDirectory != null &&
+        await Directory(_screenshotsDirectory!).exists()) {
+      try {
+        // Use 'explorer' on Windows to open the folder
+        await Process.run('explorer', [_screenshotsDirectory!]);
+        developer.log('Opened screenshots folder: $_screenshotsDirectory');
+      } catch (e) {
+        developer.log('Error opening screenshots folder: $e');
+        // Consider showing an error message to the user
+      }
+    } else {
+      developer.log('Screenshots directory not found or not initialized.');
+      // Consider showing a message to the user that the folder is not ready
+    }
+  }
+
   void _initScreenshotsDirectory() async {
     try {
       // Use getApplicationDocumentsDirectory to get a suitable directory
@@ -130,6 +148,7 @@ class _MyHomePageState extends State<MyHomePage> {
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: <Widget>[
+                // Added new button here
                 Expanded(
                   child: TextField(
                     controller: _urlController,
@@ -139,8 +158,15 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 8), // Add spacing between buttons
+                // **Add the new button here**
                 ElevatedButton(onPressed: _loadUrl, child: const Text('ابدأ')),
+                const SizedBox(width: 8), // Add spacing between buttons
+                // **Add the new button here **
+                ElevatedButton(
+                  onPressed: _openScreenshotsFolder,
+                  child: const Text('Open Folder'), // Text for the new button
+                ),
               ],
             ),
           ),
