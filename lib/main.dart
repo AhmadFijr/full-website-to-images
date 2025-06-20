@@ -1,17 +1,16 @@
-import 'package:flutter/material.dart';
-import 'package:html/parser.dart' show parse;
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:html/dom.dart' as dom;
+import 'dart:typed_data'; // Required for Uint8List
+import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart' as path_provider;
 import 'dart:developer' as developer;
+import 'package:myapp/crawler.dart';
+import 'package:myapp/webview_manager.dart'; // Import the abstract class
 
 void main() {
   runApp(const MyApp());
 }
-
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -19,9 +18,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Web Screenshot App',
+      title: 'Web Crawler App',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const MyHomePage(title: 'Web Screenshot Tool'),
+      home: const MyHomePage(title: 'Web Crawler Tool'),
     );
   }
 }
@@ -35,109 +34,144 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
+// Adapter class to connect InAppWebViewController with our abstract WebViewManager
+class InAppWebViewManager implements WebViewManager {
+  final InAppWebViewController _controller;
+
+  InAppWebViewManager(this._controller);
+
+  @override
+  Future<String?> getHtmlContent() {
+    return _controller.getHtml();
+  }
+
+  @override
+  Future<void> loadUrl(String url) {
+    return _controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+  }
+
+  @override
+  Future<dynamic> runJavaScript(String script) {
+    return _controller.evaluateJavascript(source: script);
+  }
+
+  @override
+  Future<void> stopLoading() async {
+    await _controller.stopLoading();
+  }
+
+  @override
+  Future<Uint8List?> takeScreenshot() {
+    return _controller.takeScreenshot();
+  }
+
+  Future<void> waitForNetworkIdle({Duration? timeout}) async {
+    await Future.delayed(timeout ?? const Duration(milliseconds: 500));
+  }
+
+  // --- FIX: Implementations to satisfy the abstract class contract ---
+
+  @override
+  Widget buildWebView({Function(String p1)? onLoadStop}) {
+    return Container();
+  }
+
+  @override
+  void dispose() {
+    // No operation needed.
+  }
+
+  // FIX: Corrected the getter's return type to match the abstract class.
+  // The type is now Function(String)?, which means a nullable function
+  // that takes a String as an argument.
+  @override
+  Function(String)? get onLoadStopCallback => null;
+}
+
 class _MyHomePageState extends State<MyHomePage> {
-  String? _currentOrigin; // لتخزين أصل (Origin) الموقع المستهدف
-  final Set<String> _visitedUrls =
-      {}; // مجموعة لتخزين عناوين URL التي تم زيارتها
-  final List<String> _urlsToVisit = []; // قائمة لعناوين URL التي يجب زيارتها
+  late TextEditingController _urlController;
+  late TextEditingController _maxDepthController;
   int _pagesVisitedCount = 0;
   int _urlsToVisitCount = 0;
-  late final InAppWebViewController _controller;
-  String? _screenshotsDirectory;
-  late final TextEditingController _urlController;
+  final List<String> _screenshotPaths = [];
+  bool _isCrawling = false;
+
+  late Crawler _crawler;
 
   @override
   void initState() {
     super.initState();
-    _urlController = TextEditingController();
+    _urlController = TextEditingController(text: "flutter.dev");
+    _maxDepthController = TextEditingController(text: "1");
     _initScreenshotsDirectory();
   }
 
-  void _loadUrl() {
-    String url = _urlController.text.trim();
-    if (url.isNotEmpty) {
-      // Prepend https:// if no scheme is provided
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'https://$url';
-      }
-
-      final uri = Uri.tryParse(url);
-      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-        _currentOrigin =
-            '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
-
-        _urlsToVisit.clear();
-        _visitedUrls.clear();
-        _urlsToVisit.add(url);
-
-        // **Crucially, initiate the process by loading the first URL in the WebView**
-        if (_urlsToVisit.isNotEmpty) {
-          final initialUrl = _urlsToVisit.removeAt(0);
-          setState(() {
-            _urlsToVisitCount = _urlsToVisit.length;
-            _visitedUrls.add(
-              initialUrl,
-            ); // Add the initial URL to visited immediately
-            _pagesVisitedCount++; // Increment visited pages for the initial URL
-          });
-          developer.log('Starting crawl with: $initialUrl');
-          if (_controller != null) {
-            // Unnecessary null comparison removed
-            _controller.loadUrl(
-              urlRequest: URLRequest(url: WebUri(initialUrl)),
-            );
-          }
-        } else {
-          developer.log('URL list is empty after adding initial URL.');
-        }
-      } else {
-        developer.log('Invalid URL format: $url');
-        // Consider showing an error message to the user in the UI
-      }
-    }
-  }
-
-  // Function to open the screenshots directory
-  void _openScreenshotsFolder() async {
-    if (_screenshotsDirectory != null &&
-        await Directory(_screenshotsDirectory!).exists()) {
-      try {
-        // Use 'explorer' on Windows to open the folder
-        await Process.run('explorer', [_screenshotsDirectory!]);
-        developer.log('Opened screenshots folder: $_screenshotsDirectory');
-      } catch (e) {
-        developer.log('Error opening screenshots folder: $e');
-        // Consider showing an error message to the user
-      }
-    } else {
-      developer.log('Screenshots directory not found or not initialized.');
-      // Consider showing a message to the user that the folder is not ready
-    }
-  }
-
-  void _initScreenshotsDirectory() async {
+  Future<void> _initScreenshotsDirectory() async {
     try {
-      // Use getApplicationDocumentsDirectory to get a suitable directory
       final directory = await path_provider.getApplicationDocumentsDirectory();
-      // تأكد من أن الدليل ليس فارغًا قبل المتابعة
-      if (directory.path.isNotEmpty) {
-        // Use a safe directory if getApplicationDocumentsDirectory returns an empty path
-        // This case is unlikely on typical desktop OS but good for robustness
+      final screenshotsDirectory = Directory('${directory.path}/screenshots');
 
-        _screenshotsDirectory = '${directory.path}/screenshots';
-
-        // إنشاء المجلد إذا لم يكن موجودًا
-        final screenshotsDir = Directory(_screenshotsDirectory!);
-        if (!await screenshotsDir.exists()) {
-          await screenshotsDir.create(recursive: true);
-        }
-        developer.log('Screenshots will be saved in: $_screenshotsDirectory');
-      } else {
-        developer.log('Application documents directory is not available.');
+      if (!await screenshotsDirectory.exists()) {
+        await screenshotsDirectory.create(recursive: true);
       }
+      developer.log(
+        'Screenshots will be saved in: ${screenshotsDirectory.path}',
+      );
     } catch (e) {
       developer.log('Error initializing screenshots directory: $e');
-      // يمكنك إضافة معالجة للأخطاء هنا
+    }
+  }
+
+  Future<void> startCrawl() async {
+    if (_isCrawling) return;
+
+    _screenshotPaths.clear();
+    final url = _urlController.text.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a URL.')));
+      return;
+    }
+
+    setState(() {
+      _isCrawling = true;
+      _pagesVisitedCount = 0;
+      _urlsToVisitCount = 0;
+    });
+
+    try {
+      await _crawler.startCrawl(url);
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Crawl Potentially Complete'),
+              content: const Text('The initial crawl process has finished.'),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    } catch (e, st) {
+      developer.log('Error during crawl: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error during crawl: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCrawling = false;
+        });
+      }
     }
   }
 
@@ -146,39 +180,55 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
               children: <Widget>[
-                // Added new button here
                 Expanded(
                   child: TextField(
                     controller: _urlController,
                     decoration: const InputDecoration(
-                      hintText: 'أدخل عنوان URL للموقع',
+                      hintText: 'Enter website URL',
                       border: OutlineInputBorder(),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8), // Add spacing between buttons
-                // **Add the new button here**
-                ElevatedButton(onPressed: _loadUrl, child: const Text('ابدأ')),
-                const SizedBox(width: 8), // Add spacing between buttons
-                // **Add the new button here **
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 0,
+                  child: SizedBox(
+                    width: 100,
+                    child: TextField(
+                      controller: _maxDepthController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        hintText: 'Depth',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: _openScreenshotsFolder,
-                  child: const Text('Open Folder'), // Text for the new button
+                  onPressed: _isCrawling ? null : startCrawl,
+                  child: const Text('Start Crawl'),
                 ),
               ],
             ),
           ),
+          Visibility(
+            visible: _isCrawling,
+            child: const LinearProgressIndicator(),
+          ),
           Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                Text('Pages Visited: $_pagesVisitedCount'),
-                Text('URLs to Visit: $_urlsToVisitCount'),
+                Text('Visited: $_pagesVisitedCount'),
+                Text('To Visit: $_urlsToVisitCount'),
               ],
             ),
           ),
@@ -186,30 +236,47 @@ class _MyHomePageState extends State<MyHomePage> {
             child: InAppWebView(
               initialUrlRequest: URLRequest(url: WebUri("about:blank")),
               initialSettings: InAppWebViewSettings(
-                javaScriptCanOpenWindowsAutomatically: true,
                 javaScriptEnabled: true,
-                // enableSlowWholeDocumentDraw: true, // This option might need to be set differently or is for older versions
+                javaScriptCanOpenWindowsAutomatically: true,
               ),
               onWebViewCreated: (controller) {
-                _controller = controller;
+                final logger = Logger();
+                final webViewManager = InAppWebViewManager(controller);
+
+                _crawler = Crawler(
+                  logger: logger,
+                  webViewManager: webViewManager,
+                  maxDepth: int.tryParse(_maxDepthController.text) ?? -1,
+                  crawlPathLookback: 10,
+                  onVisitedCountChanged: (count) {
+                    if (mounted) setState(() => _pagesVisitedCount = count);
+                  },
+                  onToVisitCountChanged: (count) {
+                    if (mounted) setState(() => _urlsToVisitCount = count);
+                  },
+                  onCrawlCompleted: () {
+                    if (mounted) {
+                      setState(() => _isCrawling = false);
+                    }
+                  },
+                  onScreenshotCaptured: (path) {
+                    if (mounted) {
+                      setState(() {
+                        _screenshotPaths.add(path);
+                      });
+                    }
+                  },
+                );
               },
               onLoadStop: (controller, url) {
-                _extractLinksAndContinue();
-              },
-              onProgressChanged: (controller, progress) {
-                // Handle progress updates if needed
+                if (url != null && _isCrawling) {
+                  _crawler.onPageLoaded(url.toString(), 200);
+                }
               },
               onReceivedError: (controller, request, error) {
                 developer.log(
                   'Web resource error: ${error.description} on ${request.url}',
                 );
-                // Continue to the next URL even if an error occurs
-                _processNextUrl();
-              },
-              onLoadResource: (controller, params) async {
-                // This callback is triggered for each resource loaded by the webview
-                // We don't need to do anything specific with navigation requests here
-                // as we are handling url extraction and processing in onLoadStop
               },
             ),
           ),
@@ -218,194 +285,10 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  void _processNextUrl() {
-    if (_urlsToVisit.isNotEmpty) {
-      final nextUrl = _urlsToVisit.removeAt(0);
-
-      if (!_visitedUrls.contains(nextUrl)) {
-        setState(() {
-          _visitedUrls.add(nextUrl);
-          _pagesVisitedCount++;
-          _urlsToVisitCount = _urlsToVisit.length;
-        });
-        developer.log('Visiting: $nextUrl');
-
-        _controller.loadUrl(urlRequest: URLRequest(url: WebUri(nextUrl)));
-      } else {
-        _processNextUrl();
-      }
-      setState(() {
-        _urlsToVisitCount = _urlsToVisit.length;
-      });
-    } else {
-      developer.log('Finished crawling.');
-
-      // **أظهر رسالة Dialog هنا**
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Crawl Complete'), // Changed title to English
-            content: Text(
-              'Finished crawling the website.',
-            ), // Changed content to English
-            actions: <Widget>[
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Close the dialog
-                },
-                child: const Text('OK'), // Changed button text to English
-              ),
-            ],
-          );
-        },
-      );
-    }
-  }
-
-  void _extractLinksAndContinue() async {
-    developer.log('Page finished loading. Extracting links...');
-
-    try {
-      // Extract HTML content
-      final htmlString =
-          await _controller.evaluateJavascript(
-                source: 'document.documentElement.outerHTML',
-              )
-              as String;
-
-      // Parse HTML and extract links
-      final document = parse(htmlString);
-      final Iterable<dom.Element> anchorElements = document.querySelectorAll(
-        'a',
-      );
-
-      developer.log('Found ${anchorElements.length} anchor elements.');
-
-      // Optional: Interact with the page using JavaScript (example)
-      try {
-        // Example: Get the number of buttons
-        final numberOfButtons = await _controller.evaluateJavascript(
-          source: 'document.querySelectorAll("button").length',
-        );
-        developer.log('Number of buttons on the page: $numberOfButtons');
-      } catch (e) {
-        developer.log('Error executing JavaScript: $e');
-      }
-
-      // Example: Attempt to click on the first link
-      try {
-        await _controller.evaluateJavascript(
-          source: 'document.querySelector("a")?.click();',
-        );
-        developer.log('Attempted to click on the first link.');
-      } catch (e) {
-        developer.log('Error executing JavaScript click: $e');
-      }
-
-      // Example: Scroll to the bottom
-      try {
-        await _controller.evaluateJavascript(
-          source: '''
-          if (document.body) {
-            window.scrollTo(0, document.body.scrollHeight);
-          }
-''',
-        );
-        developer.log('Scrolled to the bottom of the page.');
-      } catch (e) {
-        developer.log('Error executing JavaScript scroll: $e');
-      }
-
-      for (final anchor in anchorElements) {
-        final href = anchor.attributes['href']; // Extract href attribute
-
-        if (href != null && href.isNotEmpty && !href.startsWith('#')) {
-          // Resolve relative URLs and filter
-          if (_visitedUrls.isNotEmpty) {
-            final resolvedUrl =
-                Uri.parse(
-                  _visitedUrls.last,
-                ).resolveUri(Uri.parse(href)).toString();
-
-            if (_currentOrigin != null &&
-                resolvedUrl.startsWith(_currentOrigin!) &&
-                !_visitedUrls.contains(resolvedUrl) &&
-                !_urlsToVisit.contains(resolvedUrl)) {
-              setState(() {
-                _urlsToVisit.add(resolvedUrl); // Add to queue
-              });
-              developer.log('Added to queue: $resolvedUrl');
-            } else {
-              // developer.log('Ignoring URL: $resolvedUrl');
-            }
-          }
-        }
-      }
-
-      setState(() {
-        _urlsToVisitCount = _urlsToVisit.length;
-      });
-
-      // Capture screenshot
-      if (_screenshotsDirectory != null) {
-        try {
-          final Uint8List? bytes = await _controller.takeScreenshot();
-          if (bytes != null) {
-            String fileName = ''; // Initialize with an empty string
-            final pageTitle =
-                await _controller.evaluateJavascript(source: 'document.title')
-                    as String?;
-
-            if (pageTitle != null && pageTitle.isNotEmpty) {
-              final cleanedTitle =
-                  pageTitle.replaceAll(RegExp(r'[^ws.-]'), '').trim();
-              fileName =
-                  '${cleanedTitle.isEmpty ? "untitled" : cleanedTitle}.png';
-            } else if (_visitedUrls.isNotEmpty) {
-              final currentUrl = _visitedUrls.last;
-              final urlPath = Uri.parse(currentUrl).path;
-              final cleanedPath =
-                  urlPath.replaceAll(RegExp(r'[\/]'), '_').trim();
-              fileName =
-                  '${cleanedPath.isEmpty || cleanedPath == "_" ? "homepage" : cleanedPath}.png';
-            }
-
-            int counter = 1;
-            String finalFileName = fileName;
-            while (finalFileName.isNotEmpty &&
-                await File('$_screenshotsDirectory/$finalFileName').exists()) {
-              final baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-              final extension = fileName.substring(fileName.lastIndexOf('.'));
-              finalFileName = '${baseName}_$counter$extension';
-              counter++; // Unnecessary braces removed
-            }
-            final filePath = '${_screenshotsDirectory}/${finalFileName}';
-            // Unnecessary braces removed
-            final file = File(filePath);
-            await file.writeAsBytes(bytes);
-
-            developer.log('Screenshot saved to: $filePath');
-          } else {
-            developer.log('Failed to capture screenshot: bytes are null');
-          }
-        } catch (e) {
-          developer.log('Error capturing or saving screenshot: $e');
-        }
-      } else {
-        developer.log('Screenshots directory not initialized.');
-      }
-    } catch (e) {
-      developer.log('Error during link extraction or screenshot: $e');
-    }
-
-    // Continue to the next URL in the queue
-    _processNextUrl();
-  }
-
   @override
   void dispose() {
-    _urlController.dispose(); // Dispose the controller
+    _urlController.dispose();
+    _maxDepthController.dispose();
     super.dispose();
   }
 }

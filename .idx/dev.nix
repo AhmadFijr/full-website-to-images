@@ -17,6 +17,7 @@
       "Dart-Code.dart-code"
     ];
     workspace = {
+      
       # Runs when a workspace is first created with this `dev.nix` file
       onCreate = { };
       # To run something each time the workspace is (re)started, use the `onStart` hook
