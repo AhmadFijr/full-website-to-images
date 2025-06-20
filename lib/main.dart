@@ -250,7 +250,11 @@ class _MyHomePageState extends State<MyHomePage> {
       // Example: Scroll to the bottom
       try {
         await _controller.evaluateJavascript(
-          source: 'window.scrollTo(0, document.body.scrollHeight);',
+          source: '''
+          if (document.body) {
+            window.scrollTo(0, document.body.scrollHeight);
+          }
+''',
         );
         developer.log('Scrolled to the bottom of the page.');
       } catch (e) {
