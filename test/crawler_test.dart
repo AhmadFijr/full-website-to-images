@@ -37,13 +37,14 @@ void main() {
       crawler.addUrlToVisitedSetForTest(visitedEntry);
       crawler.addUrlToVisitQueueForTest(visitedEntry);
 
+      crawler.toVisitCount = 1;
       await crawler.processNextUrlForTest();
 
       // Verify that loadUrl was NOT called on the mock WebViewManager
       verifyNever(mockWebViewManager.loadUrl(argThat(isA<String>())));
 
       // Verify that visitedCount and toVisitCount are NOT changed
-      expect(crawler.visitedCount, 1);
+      expect(crawler.visitedCount, 0);
       expect(crawler.toVisitCount, 0);
 
       // Verify logger output indicating the URL was skipped

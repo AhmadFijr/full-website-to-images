@@ -127,7 +127,6 @@ class Crawler {
 
     if (_visitedUrls.any((entry) => entry.url == nextEntry.url)) {
       _logger.i("Skipping already visited URL: ${nextEntry.url}");
-      _processNextUrl();
       return;
     }
 
@@ -153,7 +152,6 @@ class Crawler {
   void _onPageLoadError(String url, String errorMessage) {
     _logger.e("Page failed to load: $url, Error: $errorMessage");
     _currentProcessingEntry = null;
-    _processNextUrl();
   }
 
   void onPageLoaded(String loadedUrl, int? statusCode) async {
@@ -234,8 +232,6 @@ class Crawler {
       }
       
       String normalizedUrl = Uri.parse(resolvedUrl).removeFragment().toString();
-      
-      bool alreadyProcessed = _visitedUrls.contains(normalizedUrl) || _urlsToVisit.any((entry) => entry.url == normalizedUrl);
 
  if (!_visitedUrls.any((entry) => entry.url == normalizedUrl) && !_urlsToVisit.any((entry) => entry.url == normalizedUrl)) {
         UrlEntry newEntry = UrlEntry(
