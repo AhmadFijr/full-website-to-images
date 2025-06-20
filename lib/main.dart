@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:html/parser.dart' show parse;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:html/dom.dart' as dom;
-import 'dart:typed_data';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart'
-    as path_provider; // Use an alias
+import 'dart:typed_data';
+import 'package:html/dom.dart' as dom;
+import 'package:path_provider/path_provider.dart' as path_provider;
 import 'dart:developer' as developer;
 
 void main() {
@@ -52,20 +51,61 @@ class _MyHomePageState extends State<MyHomePage> {
     _initScreenshotsDirectory();
   }
 
-  // void _initScreenshotsDirectory() async {
-  //   final directory = await path_provider.getApplicationDocumentsDirectory();
-  //   final screenshotsDir = Directory(_screenshotsDirectory!);
-  //   if (!await screenshotsDir.exists()) {
-  //     await screenshotsDir.create(recursive: true);
-  //   }
-  //   developer.log('Screenshots will be saved in: $_screenshotsDirectory');
-  // }
+  void _loadUrl() {
+    String url = _urlController.text.trim();
+    if (url.isNotEmpty) {
+      // Prepend https:// if no scheme is provided
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://$url';
+      }
+
+      final uri = Uri.tryParse(url);
+      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+        _currentOrigin =
+            '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+
+        _urlsToVisit.clear();
+        _visitedUrls.clear();
+        _urlsToVisit.add(url);
+
+        // **Crucially, initiate the process by loading the first URL in the WebView**
+        if (_urlsToVisit.isNotEmpty) {
+          final initialUrl = _urlsToVisit.removeAt(0);
+          setState(() {
+            _urlsToVisitCount = _urlsToVisit.length;
+            _visitedUrls.add(
+              initialUrl,
+            ); // Add the initial URL to visited immediately
+            _pagesVisitedCount++; // Increment visited pages for the initial URL
+          });
+          developer.log('Starting crawl with: $initialUrl');
+          if (_controller != null) {
+            _controller.loadUrl(
+              urlRequest: URLRequest(url: WebUri(initialUrl)),
+            );
+          }
+        } else {
+          developer.log('URL list is empty after adding initial URL.');
+        }
+      } else {
+        developer.log('Invalid URL format: $url');
+        // Consider showing an error message to the user in the UI
+      }
+    }
+  }
 
   void _initScreenshotsDirectory() async {
     try {
+      // Use getApplicationDocumentsDirectory to get a suitable directory
       final directory = await path_provider.getApplicationDocumentsDirectory();
+      // تأكد من أن الدليل ليس فارغًا قبل المتابعة
       if (directory.path.isNotEmpty) {
+        // Use a safe directory if getApplicationDocumentsDirectory returns an empty path
+        // This case is unlikely on typical desktop OS but good for robustness
+
         _screenshotsDirectory = '${directory.path}/screenshots';
+
+        // إنشاء المجلد إذا لم يكن موجودًا
         final screenshotsDir = Directory(_screenshotsDirectory!);
         if (!await screenshotsDir.exists()) {
           await screenshotsDir.create(recursive: true);
@@ -76,23 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     } catch (e) {
       developer.log('Error initializing screenshots directory: $e');
-    }
-  }
-
-  void _loadUrl() {
-    final String url = _urlController.text.trim();
-    if (url.isNotEmpty) {
-      final uri = Uri.tryParse(url);
-      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-        _currentOrigin =
-            '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
-        _urlsToVisit.clear();
-        _visitedUrls.clear();
-        _urlsToVisit.add(url);
-        _processNextUrl();
-      } else {
-        developer.log('Invalid URL: $url');
-      }
+      // يمكنك إضافة معالجة للأخطاء هنا
     }
   }
 
@@ -131,30 +155,26 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
           Expanded(
             child: InAppWebView(
-              initialUrlRequest: URLRequest(
-                url: WebUri("about:blank"),
-              ), // Initial blank page
+              initialUrlRequest: URLRequest(url: WebUri("about:blank")),
               initialSettings: InAppWebViewSettings(
-                // Use InAppWebViewSettings
                 javaScriptCanOpenWindowsAutomatically: true,
                 javaScriptEnabled: true,
+                // enableSlowWholeDocumentDraw: true, // This option might need to be set differently or is for older versions
               ),
               onWebViewCreated: (controller) {
-                _controller = controller; // Initialize the controller here
+                _controller = controller;
               },
-              onProgressChanged: (controller, progress) {},
+              onLoadStop: (controller, url) {
+                _extractLinksAndContinue();
+              },
+              onProgressChanged: (controller, progress) {
+                // Handle progress updates if needed
+              },
               onReceivedError: (controller, request, error) {
                 developer.log(
                   'Web resource error: ${error.description} on ${request.url}',
                 );
                 _processNextUrl(); // Continue to the next URL even if an error occurs
-              },
-              shouldOverrideUrlLoading: (controller, navigationAction) async {
-                // Allow all navigation requests for now
-                return NavigationActionPolicy.ALLOW;
-              },
-              onLoadStop: (controller, url) {
-                _extractLinksAndContinue();
               },
             ),
           ),
@@ -179,6 +199,9 @@ class _MyHomePageState extends State<MyHomePage> {
       } else {
         _processNextUrl();
       }
+      setState(() {
+        _urlsToVisitCount = _urlsToVisit.length;
+      });
     } else {
       developer.log('Finished crawling.');
     }
@@ -269,7 +292,7 @@ class _MyHomePageState extends State<MyHomePage> {
         try {
           final Uint8List? bytes = await _controller.takeScreenshot();
           if (bytes != null) {
-            String fileName;
+            String fileName = ''; // Initialize with an empty string
             final pageTitle =
                 await _controller.evaluateJavascript(source: 'document.title')
                     as String?;
@@ -279,26 +302,25 @@ class _MyHomePageState extends State<MyHomePage> {
                   pageTitle.replaceAll(RegExp(r'[^ws.-]'), '').trim();
               fileName =
                   '${cleanedTitle.isEmpty ? "untitled" : cleanedTitle}.png';
-            } else {
+            } else if (_visitedUrls.isNotEmpty) {
               final currentUrl = _visitedUrls.last;
               final urlPath = Uri.parse(currentUrl).path;
               final cleanedPath =
                   urlPath.replaceAll(RegExp(r'[\/]'), '_').trim();
               fileName =
-                  '${(cleanedPath.isEmpty || cleanedPath == "_") ? "homepage" : cleanedPath}.png';
+                  '${cleanedPath.isEmpty || cleanedPath == "_" ? "homepage" : cleanedPath}.png';
             }
 
             int counter = 1;
             String finalFileName = fileName;
-            while (await File(
-              '$_screenshotsDirectory/$finalFileName',
-            ).exists()) {
+            while (finalFileName.isNotEmpty &&
+                await File('$_screenshotsDirectory/$finalFileName').exists()) {
               final baseName = fileName.substring(0, fileName.lastIndexOf('.'));
               final extension = fileName.substring(fileName.lastIndexOf('.'));
               finalFileName = '${baseName}_$counter$extension';
               counter++;
             }
-            final filePath = '$_screenshotsDirectory/$finalFileName';
+            final filePath = '${_screenshotsDirectory}/${finalFileName}';
 
             final file = File(filePath);
             await file.writeAsBytes(bytes);
