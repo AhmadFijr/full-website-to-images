@@ -52,13 +52,31 @@ class _MyHomePageState extends State<MyHomePage> {
     _initScreenshotsDirectory();
   }
 
+  // void _initScreenshotsDirectory() async {
+  //   final directory = await path_provider.getApplicationDocumentsDirectory();
+  //   final screenshotsDir = Directory(_screenshotsDirectory!);
+  //   if (!await screenshotsDir.exists()) {
+  //     await screenshotsDir.create(recursive: true);
+  //   }
+  //   developer.log('Screenshots will be saved in: $_screenshotsDirectory');
+  // }
+
   void _initScreenshotsDirectory() async {
-    final directory = await path_provider.getApplicationDocumentsDirectory();
-    final screenshotsDir = Directory(_screenshotsDirectory!);
-    if (!await screenshotsDir.exists()) {
-      await screenshotsDir.create(recursive: true);
+    try {
+      final directory = await path_provider.getApplicationDocumentsDirectory();
+      if (directory.path.isNotEmpty) {
+        _screenshotsDirectory = '${directory.path}/screenshots';
+        final screenshotsDir = Directory(_screenshotsDirectory!);
+        if (!await screenshotsDir.exists()) {
+          await screenshotsDir.create(recursive: true);
+        }
+        developer.log('Screenshots will be saved in: $_screenshotsDirectory');
+      } else {
+        developer.log('Application documents directory is not available.');
+      }
+    } catch (e) {
+      developer.log('Error initializing screenshots directory: $e');
     }
-    developer.log('Screenshots will be saved in: $_screenshotsDirectory');
   }
 
   void _loadUrl() {
