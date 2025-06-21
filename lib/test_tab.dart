@@ -43,7 +43,9 @@ class TestTabState extends State<TestTab> {
           ElevatedButton(
             onPressed: () async {
               if (_webViewController != null) {
-                await _takeScreenshot(); } else {
+                    await _takeScreenshot(); 
+                } 
+                else {
                 _logger.d('WebView controller is not available.');
               }
             },
@@ -66,6 +68,7 @@ class TestTabState extends State<TestTab> {
   Future<void> _takeScreenshot() async {
     if (_webViewController != null) {
  _logger.d("Attempting to take screenshot...");
+      await Future.delayed(Duration(milliseconds: 500)); // Add a small delay
       final screenshot = await _webViewController!.takeScreenshot(
         screenshotConfiguration: ScreenshotConfiguration(compressFormat: CompressFormat.PNG),
       );
@@ -80,6 +83,7 @@ class TestTabState extends State<TestTab> {
              if (!await screenshotsDir.exists()) {
               await screenshotsDir.create(recursive: true);
             }
+ _logger.d('Screenshot directory initialized: $_screenshotDirectoryPath');
           }
            final filePath = p.join(_screenshotDirectoryPath!, 'test_screenshot_${DateTime.now().millisecondsSinceEpoch}.png');
           await File(filePath).writeAsBytes(screenshot);
@@ -87,6 +91,10 @@ class TestTabState extends State<TestTab> {
         } catch (e) {
  _logger.e("Error saving screenshot: $e");
  }
+      } else if (screenshot == null) {
+ _logger.w("Screenshot capture returned null.");
+      } else if (screenshot.isEmpty) {
+ _logger.w("Screenshot capture returned empty byte data.");
       } else {
  _logger.d("Screenshot capture failed.");
       }
