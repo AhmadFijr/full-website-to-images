@@ -206,6 +206,8 @@ class Crawler {
   }
 
   void onPageLoaded(String loadedUrl, int? statusCode) async {
+    _logger.i("onPageLoaded triggered for $loadedUrl with status code $statusCode");
+
     if (_isStopping || _currentProcessingEntry == null) {
       if (_isStopping) _logger.i("Stopping crawl process in onPageLoaded.");
       return;
@@ -335,12 +337,13 @@ class Crawler {
         _logger.i("Extracted data for $finalUrl: $extractedData");
       }
 
+      await _captureScreenshot(document, finalUrl);
+
       await _extractLinks(
         document,
         finalUrl,
         _currentProcessingEntry!,
       ); // Call _extractLinks after extraction
-      await _captureScreenshot(document, finalUrl);
     } else {
       _logger.w(
         "Could not get HTML content for $finalUrl. Skipping link extraction and screenshot.",
