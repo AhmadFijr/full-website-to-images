@@ -478,10 +478,14 @@ class Crawler {
 
   /// Stitches a list of image parts (Uint8List) into a single image.
   /// Returns the combined image as Uint8List (PNG format) or null if stitching fails.
-  Future<Uint8List?> stitchImages(List<Uint8List> screenshotParts) async {
-    final List<image.Image> decodedImages = [];
+  Future<List<int>?> stitchImages(List<Uint8List> screenshotParts) async {
+    // Remove the try-catch block within the loop if it's not needed for individual part processing errors.
+    // If you intended error handling for decoding individual parts, the existing check `if (img != null)` is sufficient.
 
-    for (final partBytes in screenshotParts) {
+    final List<image.Image> decodedImages = [];
+    
+    for (final partBytes in screenshotParts) { // Removed redundant loop variable definition
+
       // Loop through screenshot parts
       final img = image.decodeImage(partBytes);
       if (img != null) {
@@ -507,7 +511,8 @@ class Crawler {
         maxWidth = img.width;
       }
     }
-
+    
+    
     // Create a new image with calculated dimensions
     // Use a suitable background color, e.g., black
     // Updated constructor based on common usage in recent 'image' package versions
@@ -523,10 +528,31 @@ class Crawler {
     // Encode the combined image as PNG
     final stitchedBytes = image.encodePng(finalImage);
 
-    _logger.i("Successfully stitched ${decodedImages.length} image parts.");
+    // Added image saving functionality
+    try {
+      // Get the application documents directory
+      final directory = await getApplicationDocumentsDirectory();
+      final imagesDirectory = Directory('${directory.path}/screenshots');
 
-    // Ensure the return type is Uint8List
-    return Uint8List.fromList(stitchedBytes);
+      // Create the screenshots directory if it doesn't exist
+      if (!await imagesDirectory.exists()) {
+        await imagesDirectory.create(recursive: true);
+        _logger.i("Created screenshots directory: ${imagesDirectory.path}");
+      }
+
+      // Define the file path within the screenshots directory with a unique filename
+      final filePath = '${imagesDirectory.path}/stitched_image_${DateTime.now().millisecondsSinceEpoch}.png';
+
+      final File file = File(filePath);
+      await file.writeAsBytes(stitchedBytes);
+      _logger.i("Stitched image saved to: $filePath");
+      return stitchedBytes; // Return the stitched image bytes
+    } catch (e) {
+      _logger.e("Error saving stitched image: $e");
+    }
+    _logger.i("Successfully stitched ${decodedImages.length} image parts.");
+    return null;
+
   }
 
   Future<void> waitForPageContent(
