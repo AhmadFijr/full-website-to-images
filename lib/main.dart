@@ -101,7 +101,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    _urlController = TextEditingController(text: "flutter.dev");
+    _urlController = TextEditingController(text: "example.com");
     _maxDepthController = TextEditingController(text: "1");
     _initScreenshotsDirectory();
   }
