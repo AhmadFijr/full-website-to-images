@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart' as path_provider;
-import 'package:myapp/crawler.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:myapp/test_tab.dart';
 import 'package:logger/logger.dart';
 import 'package:myapp/webview_manager.dart'; // Import WebViewManager
+import 'package:myapp/crawler.dart';
+
 
 void main() {
   runApp(const MyApp());
@@ -20,21 +20,19 @@ class MyApp extends StatelessWidget {
       title: 'Web Crawler App',
       theme: ThemeData(primarySwatch: Colors.blue),
       home: DefaultTabController(
-        length: 2, // Number of tabs
+        length: 1, // Number of tabs
         child: Scaffold(
           appBar: AppBar(
             title: const Text('Web Crawler Tool'),
             bottom: const TabBar(
-              tabs: [
-                Tab(text: 'Crawler'),
-                Tab(text: 'Test'),
+              tabs: <Widget>[
+                const Tab(text: 'Crawler'),
               ],
             ),
           ),
           body: const TabBarView(
-            children: [
+            children: <Widget>[
               CrawlerTab(), // Content for the Crawler tab
-              TestTab(), // Content for the Test tab
             ],
           ),
         ),
@@ -59,7 +57,6 @@ class CrawlerTabState extends State<CrawlerTab> {
   String? _screenshotsDirectoryPath;
   late Crawler _crawler;
   late WebViewManager _webViewManager; // Declare WebViewManager
-
   final Logger _logger = Logger();
 
   @override
@@ -186,6 +183,30 @@ class CrawlerTabState extends State<CrawlerTab> {
     }
   }
 
+  Future<void> _takeScreenshot() async {
+    _logger.d("Attempting to take screenshot...");
+    try {
+      // Add a small delay to allow the WebView to render
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final screenshot = await _webViewManager.takeScreenshot();
+
+      if (screenshot != null) {
+        _logger.d("Screenshot captured, ${screenshot.length} bytes.");
+        // Here you would add the logic to save the screenshot,
+        // similar to what was in the TestTab.
+        // For now, we'll just log that it was captured.
+        _logger.i("Screenshot captured successfully.");
+         // Implement save logic similar to _saveScreenshot in crawler.dart if needed
+      } else {
+        _logger.w("takeScreenshot returned null.");
+      }
+    } catch (e, st) {
+      _logger.e("Error taking screenshot: $e", error: e, stackTrace: st);
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -220,6 +241,11 @@ class CrawlerTabState extends State<CrawlerTab> {
               ElevatedButton(
                 onPressed: _isCrawling ? null : startCrawl,
                 child: const Text('Start Crawl'),
+              ),
+               const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _takeScreenshot,
+                child: const Text('Take Screenshot'),
               ),
             ],
           ),
