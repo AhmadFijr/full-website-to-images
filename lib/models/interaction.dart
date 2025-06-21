@@ -1,18 +1,18 @@
-import 'interaction_type.dart';
+enum InteractionType {
+  click,
+  input,
+  scroll,
+  // Add other types as needed
+}
 
 class Interaction {
-  final InteractionType type; // Type of interaction
-  final String? selector; // CSS selector
-  final String? value; // For input value
-  final String? script; // For direct JS code
-  final int? delayMs; // Wait time in milliseconds
+  final InteractionType type;
+  final String? selector;
+  final String? value;
 
   Interaction({
-    // Constructor for the Interaction class
     required this.type,
     this.selector,
-    this.value,
-    this.script,
-    this.delayMs,
+    this.value
   });
 }
