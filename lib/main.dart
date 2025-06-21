@@ -6,6 +6,7 @@ import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart' as path_provider;
 import 'dart:developer' as developer;
 import 'package:myapp/crawler.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:myapp/webview_manager.dart'; // Import the abstract class
 
 void main() {
@@ -95,6 +96,7 @@ class _MyHomePageState extends State<MyHomePage> {
   int _urlsToVisitCount = 0;
   final List<String> _screenshotPaths = [];
   bool _isCrawling = false;
+  String? _screenshotsDirectoryPath;
 
   late Crawler _crawler;
 
@@ -114,6 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (!await screenshotsDirectory.exists()) {
         await screenshotsDirectory.create(recursive: true);
       }
+      _screenshotsDirectoryPath = screenshotsDirectory.path;
       developer.log(
         'Screenshots will be saved in: ${screenshotsDirectory.path}',
       );
@@ -122,6 +125,16 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<void> _openScreenshotsFolder() async {
+    if (_screenshotsDirectoryPath != null) {
+      final Uri uri = Uri.directory(_screenshotsDirectoryPath!);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        developer.log('Could not launch folder: $_screenshotsDirectoryPath');
+      }
+    }
+  }
   Future<void> startCrawl() async {
     if (_isCrawling) return;
 
@@ -151,7 +164,10 @@ class _MyHomePageState extends State<MyHomePage> {
               content: const Text('The initial crawl process has finished.'),
               actions: <Widget>[
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _openScreenshotsFolder(); // Call the function here
+                  },
                   child: const Text('OK'),
                 ),
               ],
