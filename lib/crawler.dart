@@ -456,6 +456,7 @@ class Crawler {
         dirPath = '${baseDir.path}/screenshots/$sanitizedHost';
       }
 
+      _logger.d("Attempting to save screenshot to: $dirPath");
       Directory screenshotDirectory = Directory(dirPath);
       if (!await screenshotDirectory.exists()) {
         await screenshotDirectory.create(recursive: true);
@@ -464,14 +465,11 @@ class Crawler {
       String filename = 'screenshot.png';
       String filePath = '${screenshotDirectory.path}/$filename';
       final file = File(filePath);
+      _logger.d("Writing screenshot file: $filePath");
       await file.writeAsBytes(imageBytes);
       return filePath;
     } catch (e, stackTrace) {
-      _logger.e(
-        "Failed to save screenshot for $loadedUrl",
-        error: e,
-        stackTrace: stackTrace,
-      );
+      _logger.e("Failed to save screenshot for $loadedUrl: $e", stackTrace: stackTrace);
       return null;
     }
   }

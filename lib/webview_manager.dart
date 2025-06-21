@@ -7,13 +7,13 @@ import 'package:logger/logger.dart';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 
-
 class WebViewManager {
   InAppWebViewController? _controller;
   final Function(String)? onLoadStopCallback;
   final Logger _logger;
 
-  WebViewManager({required Logger logger, this.onLoadStopCallback}) : _logger = logger;
+  WebViewManager({required Logger logger, this.onLoadStopCallback})
+    : _logger = logger;
 
   Widget buildWebView() {
     return InAppWebView(
@@ -36,10 +36,15 @@ class WebViewManager {
           if (simulationToolsScript.isNotEmpty) {
             try {
               _logger.i("Simulation tools script injected successfully.");
-              await _controller?.evaluateJavascript(source: simulationToolsScript);
-
+              await _controller?.evaluateJavascript(
+                source: simulationToolsScript,
+              );
             } catch (e, st) {
- _logger.e("Error injecting simulation tools script:", error: e, stackTrace: st);
+              _logger.e(
+                "Error injecting simulation tools script:",
+                error: e,
+                stackTrace: st,
+              );
             }
           }
         }
@@ -74,17 +79,27 @@ class WebViewManager {
     _logger.d("Attempting to take screenshot...");
     if (_controller != null) {
       final screenshot = await _controller!.takeScreenshot(
-        screenshotConfiguration: ScreenshotConfiguration(compressFormat: CompressFormat.PNG),
+        screenshotConfiguration: ScreenshotConfiguration(
+          compressFormat: CompressFormat.PNG,
+        ),
       );
+      if (screenshot == null) {
+        _logger.w("Screenshot capture returned null.");
+      }
       if (screenshot != null) {
         _logger.d("Screenshot taken successfully.");
         try {
           final directory = await getApplicationDocumentsDirectory();
-          final screenshotsDir = Directory(p.join(directory.path, 'screenshots'));
+          final screenshotsDir = Directory(
+            p.join(directory.path, 'screenshots'),
+          );
           if (!await screenshotsDir.exists()) {
             await screenshotsDir.create(recursive: true);
           }
-          final filePath = p.join(screenshotsDir.path, 'screenshot_${DateTime.now().millisecondsSinceEpoch}.png');
+          final filePath = p.join(
+            screenshotsDir.path,
+            'screenshot_${DateTime.now().millisecondsSinceEpoch}.png',
+          );
           await File(filePath).writeAsBytes(screenshot);
           _logger.i("Screenshot saved to: $filePath");
         } catch (e, st) {
@@ -113,11 +128,15 @@ class WebViewManager {
       // await webStorageManager.deleteAllData();
 
       _logger.i("InAppWebView session management initialized.");
-
     } catch (e, st) {
-      _logger.e("Error setting up session management:", error: e, stackTrace: st);
+      _logger.e(
+        "Error setting up session management:",
+        error: e,
+        stackTrace: st,
+      );
     }
   }
+
   Future<String> _loadSimulationToolsScript() async {
     try {
       return await rootBundle.loadString('assets/simulation_tools.js');
