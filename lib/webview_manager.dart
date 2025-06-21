@@ -1,8 +1,11 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:logger/logger.dart';
+import 'dart:io';
+import 'package:path/path.dart' as p;
 
 
 class WebViewManager {
@@ -68,10 +71,27 @@ class WebViewManager {
   }
 
   Future<Uint8List?> takeScreenshot() async {
+    _logger.d("Attempting to take screenshot...");
     if (_controller != null) {
-      return await _controller!.takeScreenshot(
+      final screenshot = await _controller!.takeScreenshot(
         screenshotConfiguration: ScreenshotConfiguration(compressFormat: CompressFormat.PNG),
       );
+      if (screenshot != null) {
+        _logger.d("Screenshot taken successfully.");
+        try {
+          final directory = await getApplicationDocumentsDirectory();
+          final screenshotsDir = Directory(p.join(directory.path, 'screenshots'));
+          if (!await screenshotsDir.exists()) {
+            await screenshotsDir.create(recursive: true);
+          }
+          final filePath = p.join(screenshotsDir.path, 'screenshot_${DateTime.now().millisecondsSinceEpoch}.png');
+          await File(filePath).writeAsBytes(screenshot);
+          _logger.i("Screenshot saved to: $filePath");
+        } catch (e, st) {
+          _logger.e("Error saving screenshot:", error: e, stackTrace: st);
+        }
+      }
+      return screenshot;
     }
     return null;
   }
